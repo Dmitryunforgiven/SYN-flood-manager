@@ -253,23 +253,51 @@ def start_tcpdump(ssh_manager, log_callback, loading_indicator, tcpdump_button, 
     def run_tcpdump():
         clear_log(log_display)
         try:
+            if not ssh_manager.client:
+                log_callback("SSH client not initialized")
+                return
+
             loading_indicator.visible = True
             loading_indicator.update()
             log_callback("Starting tcpdump...")
             stop_tcpdump_button.disabled = False
             stop_tcpdump_button.update()
             tcpdump_running.set()
-            stdin, stdout, stderr = ssh_manager.client.exec_command("tcpdump -i any port 443 and 'tcp[13] & 2 != 0'")
-            while tcpdump_running.is_set():
-                line = stdout.readline()
-                if not line:
+
+            log_callback("Checking tcpdump availability...")
+            stdin_check, stdout_check, stderr_check = ssh_manager.client.exec_command("which tcpdump")
+            check_output = stdout_check.read().decode().strip()
+            check_error = stderr_check.read().decode().strip()
+            if not check_output:
+                log_callback(f"tcpdump not found: {check_error or 'command not available'}")
+                return
+            else:
+                log_callback(f"tcpdump found at: {check_output}")
+
+            log_callback("Executing tcpdump command...")
+            stdin, stdout, stderr = ssh_manager.client.exec_command("tcpdump -l -i any port 443 and 'tcp[13] & 2 != 0'")
+            for line in iter(stdout.readline, ""):
+                if not tcpdump_running.is_set():
                     break
                 log_callback(line.strip())
+            error_output = stderr.read().decode().strip()
+            if error_output:
+                log_callback(f"Error output: {error_output}")
+            exit_status = stdout.channel.recv_exit_status()
+            log_callback(f"tcpdump exited with status: {exit_status}")
         except Exception as e:
-            log_callback(f"Error: {e}")
+            log_callback(f"Exception caught: {type(e).__name__}: {str(e)}")
+            error_output = stderr.read().decode().strip() if 'stderr' in locals() else "No stderr available"
+            log_callback(f"Additional error info: {error_output}")
         finally:
+            tcpdump_running.clear()
             loading_indicator.visible = False
+            stop_tcpdump_button.disabled = True
+            tcpdump_button.disabled = False
+            stop_tcpdump_button.update()
+            tcpdump_button.update()
             loading_indicator.update()
+            log_callback("tcpdump process finished")
 
     tcpdump_running.clear()
     tcpdump_thread[0] = threading.Thread(target=run_tcpdump, daemon=True)

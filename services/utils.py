@@ -9,11 +9,15 @@ def get_resource_path(relative_path):
         return os.path.join(os.path.dirname(__file__), "..", relative_path)
 
 def parse_log_line(line):
-    match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
+    match = re.search(
+        r'(\d+\.\d+\.\d+\.\d+)',
+        line,
+    )
     if match:
         src_ip = match.group(1)
         return f"Source IP: {src_ip}", src_ip
-    return line, None
+    else:
+        return line, None
 
 def parse_whois_output(output, selected_fields=None):
     if not selected_fields:
